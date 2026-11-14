@@ -1005,6 +1005,77 @@ def test_show_envvar_auto_prefix(runner):
     assert "TEST_ARG1" in result.output
 
 
+def test_show_envvar_auto_prefix_error_hint(runner):
+    @click.command()
+    @click.option("--port", type=int, required=True, show_envvar=True)
+    def cmd(port):
+        pass
+
+    result = runner.invoke(cmd, [], auto_envvar_prefix="MYAPP")
+    assert result.exit_code == 2
+    assert "Missing option '--port' (env var: 'MYAPP_PORT')" in result.output
+
+    result = runner.invoke(
+        cmd,
+        [],
+        auto_envvar_prefix="MYAPP",
+        env={"MYAPP_PORT": "invalid"},
+    )
+    assert result.exit_code == 2
+    assert "Invalid value for '--port' (env var: 'MYAPP_PORT')" in result.output
+
+
+@pytest.mark.parametrize(
+    "option_kwargs, expected, forbidden",
+    [
+        ({"show_envvar": True, "envvar": "CUSTOM_PORT"}, "CUSTOM_PORT", "MYAPP_PORT"),
+        ({"show_envvar": True, "envvar": []}, "MYAPP_PORT", None),
+        ({"show_envvar": False}, None, "MYAPP_PORT"),
+        ({"show_envvar": True, "allow_from_autoenv": False}, None, "MYAPP_PORT"),
+        (
+            {"show_envvar": True, "envvar": ["CUSTOM_PORT", "BACKUP_PORT"]},
+            "'CUSTOM_PORT', 'BACKUP_PORT'",
+            "MYAPP_PORT",
+        ),
+    ],
+)
+def test_show_envvar_auto_prefix_error_hint_options(
+    runner, option_kwargs, expected, forbidden
+):
+    @click.command()
+    @click.option("--port", required=True, **option_kwargs)
+    def cmd(port):
+        pass
+
+    result = runner.invoke(cmd, [], auto_envvar_prefix="MYAPP")
+    assert result.exit_code == 2
+    assert "Missing option '--port'" in result.output
+    if expected:
+        assert expected in result.output
+    if forbidden:
+        assert forbidden not in result.output
+
+
+def test_show_envvar_auto_prefix_error_hint_nested(runner):
+    @click.group()
+    def cli():
+        pass
+
+    @cli.command()
+    @click.option("--port", required=True, show_envvar=True)
+    def foo_bar(port):
+        pass
+
+    result = runner.invoke(cli, ["foo-bar"], auto_envvar_prefix="MYAPP")
+    assert result.exit_code == 2
+    assert "MYAPP_FOO_BAR_PORT" in result.output
+
+
+def test_show_envvar_auto_prefix_error_hint_without_context():
+    option = click.Option(["--port"], show_envvar=True)
+    assert option.get_error_hint(None) == "'--port'"
+
+
 def test_show_envvar_auto_prefix_dash_in_command(runner):
     @click.group()
     def cli():
